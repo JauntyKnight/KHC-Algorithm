@@ -8,7 +8,7 @@ from sage.graphs import connectivity
 
 import warnings
 
-warnings.filterwarnings("ignore")
+# warnings.filterwarnings("ignore")
 
 
 def get_twin_edge(edge, tree, node):
@@ -38,6 +38,59 @@ def find_code(edge, neigh, A, tree):
 
 def is_virtual(edge):
     return edge[-1] is not None
+
+
+def weinberg(G, start_edge, direction):
+    if not hasattr(G, "_embedding") or G._embedding is None:
+        G.is_planar(set_embedding=True)
+
+    embedding = G._embedding
+
+    visited_vertices = set()
+    visited_edges = set()
+
+    def get_next_edge(edge, direction):
+        """
+        Returns the next unused edge in the direction
+        """
+        u, v, label = edge
+        start_index = embedding[v].index(u)
+
+        if direction == "right":
+            return next(
+                filter(
+                    lambda x: (v, x) not in visited_edges,
+                    embedding[v][start_index + 1 :] + embedding[v][:start_index],
+                )
+            )
+        else:
+            return next(
+                filter(
+                    lambda x: (v, x) not in visited_edges,
+                    embedding[v][start_index - 1 : -1 : -1]
+                    + embedding[v][-1:start_index:-1],
+                )
+            )
+
+    edge = (start_edge[0], start_edge[1])
+
+    code = []
+
+    while len(visited_edges) != G.size():
+        visited_vertices.add(edge[0])
+        visited_edges.add(edge)
+        code.append(G.edge_label(*edge))
+
+        next_vertex = edge[1]
+
+        if next_vertex not in visited_vertices:
+            edge = get_next_edge(edge, direction)
+        elif next_vertex in visited_vertices and edge[::-1] not in visited_edges:
+            edge = edge[::-1]
+        else:
+            edge = get_next_edge(edge, direction)
+
+    return code
 
 
 def code_of_S_root_node(root, A, tree):
@@ -90,16 +143,56 @@ def code_of_S_root_node(root, A, tree):
     )
 
 
+def code_of_P_root_node(root, A, tree):
+    CV = {}
+    skeleton = get_skeleton(root)
+
+    for edge in filter(is_virtual, skeleton.edge_iterator()):
+        u, v, label = edge
+        twin_edge, neigh = get_twin_edge((u, v, label), tree, root)
+
+        CV[edge] = find_code(twin_edge, neigh, A, tree)
+
+    def get_code_for_vertex(v):
+        restul = "(P"
+        result += str(skeleton.size())
+        result += str(len(filter(is_virtual, skeleton.edge_iterator())))
+
+        for code in sorted(CV.values()):
+            result += code
+
+        if v in A:
+            result += "*"
+            result += str(A[v])
+            del A[v]
+
+        result += ")P"
+        return result
+
+    return min(get_code_for_vertex(v) for v in skeleton.vertex_iterator())
+
+
+def code_of_R_root_node(root, A, tree):
+    CV = {}
+    skeleton = get_skeleton(root)
+
+    for edge in filter(is_virtual, skeleton.edge_iterator()):
+        u, v, label = edge
+        twin_edge, neigh = get_twin_edge((u, v, label), tree, root)
+
+        CV[edge] = find_code(twin_edge, neigh, A, tree)
+
+    def get_code_for_edge(edge, direction):
+        code = "(R"
+
+
 def find_biconnected_codes_from_root(root, A, tree):
     code = "(B"
 
     node_type = root[0]
 
-    print("Root:", root)
-
     if node_type == "S" or node_type == "Q":
         code += code_of_S_root_node(root, A, tree)
-        print("Code:", code)
     elif node_type == "P":
         code += code_of_P_root_node(root, A, tree)
     elif node_type == "R":
@@ -198,4 +291,8 @@ G.add_edges_from(
     ]
 )
 
-find_planar_code(G)
+D = sageall.Graph(G).to_directed()
+D.is_planar(set_embedding=True)
+print(D._embedding)
+
+print(find_planar_code(G))
