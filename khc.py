@@ -11,30 +11,99 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-def code_of_S_root_node(skeleton, A, tree):
-    code = "S"
+def get_twin_edge(edge, tree, node):
+    """
+    Let T be SPQR tree, and let e be a virtual edge
+    """
 
-    for child in tree.children(skeleton):
-        code += A[child]
+    u, v, _ = edge
+    for neigh in tree[node]:
+        neigh_skeleton = set(neigh[1].vertex_iterator())
+        if u in neigh_skeleton and v in neigh_skeleton:
+            # get the edge from u to v
+            for u_, v_, label in get_skeleton(neigh).edge_iterator():
+                if u_ == u and v_ == v:
+                    return (u, v, label), neigh
 
-    return code
+    raise Exception("Edge not found")
+
+
+def get_skeleton(node):
+    return node[1].to_directed()
+
+
+def find_code(edge, neigh, A, tree):
+    return ""
+
+
+def is_virtual(edge):
+    return edge[-1] is not None
+
+
+def code_of_S_root_node(root, A, tree):
+    CV = {}
+    skeleton = get_skeleton(root)
+    for edge in filter(is_virtual, skeleton.edge_iterator()):
+        u, v, label = edge
+        twin_edge, neigh = get_twin_edge((u, v, label), tree, root)
+
+        CV[edge] = find_code(twin_edge, neigh, A, tree)
+
+    def get_code_for_edge(edge):
+        u, v, label = edge
+        result = "(S"
+        result += str(skeleton.size())
+
+        e = next(filter(lambda x: x[1] != u and x[0] == v, skeleton.edges_incident(v)))
+        e_in = e
+        tour_counter = 1
+        while True:
+            if is_virtual(e):
+                result += str(tour_counter)
+                result += CV[e]
+            if e[1] in A:
+                result += str(tour_counter)
+                result += "*"
+                result += str(A[e[1]])
+                del A[e[1]]
+
+            e = next(
+                filter(
+                    lambda x: x[1] != e[0] and x[0] == e[1],
+                    skeleton.edges_incident(e[1]),
+                )
+            )
+            tour_counter += 1
+
+            if e == e_in:
+                break
+
+        result += ")S"
+        print("Result:", result)
+        return result
+
+    return min(
+        (
+            get_code_for_edge(edge)
+            for edge in filter(is_virtual, skeleton.edge_iterator())
+        )
+    )
 
 
 def find_biconnected_codes_from_root(root, A, tree):
     code = "(B"
 
-    node_type, skeleton = root
+    node_type = root[0]
 
     print("Root:", root)
-    skeleton = skeleton.networkx_graph()
-    print("Skeleton:", skeleton.nodes, skeleton.edges)
 
     if node_type == "S" or node_type == "Q":
-        code += code_of_S_root_node(skeleton, A, tree)
+        code += code_of_S_root_node(root, A, tree)
+        print("Code:", code)
     elif node_type == "P":
-        code += code_of_P_root_node(skeleton, A, tree)
+        code += code_of_P_root_node(root, A, tree)
     elif node_type == "R":
-        code += code_of_R_root_node(skeleton, A, tree)
+        code += code_of_R_root_node(root, A, tree)
     else:
         raise ValueError(f"Unknown node type: {node_type}")
 
