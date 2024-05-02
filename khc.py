@@ -175,7 +175,9 @@ def code_of_P_root_node(root, A, tree):
     def get_code_for_vertex(v):
         result = "(P "
         result += str(skeleton.size()) + " "
-        result += str(len(filter(is_virtual, skeleton.edge_iterator()))) + " "
+        result += (
+            str(len([1 for edge in skeleton.edge_iterator() if is_virtual(edge)])) + " "
+        )
 
         for code in sorted(CV.values()):
             result += code
@@ -353,7 +355,12 @@ def find_biconnected_codes_from_root(root, A, tree):
     print("Is directed:", tree.is_directed())
     print(list(tree.edge_iterator()))
     for node in tree.vertex_iterator():
-        print("Node:", node, list(get_skeleton(node).vertex_iterator()))
+        print(
+            "Node:",
+            node,
+            list(get_skeleton(node).vertex_iterator()),
+            list(get_skeleton(node).edge_iterator()),
+        )
         print(
             "Edges:",
             [list(get_skeleton(node).vertex_iterator()) for node in tree[node]],
@@ -368,9 +375,9 @@ def find_biconnected_codes_from_root(root, A, tree):
 
     node_type = root[0]
 
-    if node_type == "S" or node_type == "Q":
+    if node_type == "S":
         code += code_of_S_root_node(root, A, tree)
-    elif node_type == "P":
+    elif node_type == "P" or node_type == "Q":
         code += code_of_P_root_node(root, A, tree)
     elif node_type == "R":
         code += code_of_R_root_node(root, A, tree)
@@ -415,10 +422,8 @@ def make_directed_tree(tree, center):
     return tree_directed
 
 
-def find_biconnected_code(G, A, B):
-    print("Subgraph:", G.nodes, G.edges)
-    G_sage = sageall.Graph(G)
-    tree = connectivity.TriconnectivitySPQR(G_sage).get_spqr_tree()
+def find_biconnected_code(G, A):
+    tree = connectivity.TriconnectivitySPQR(G).get_spqr_tree()
 
     min_code, min_center = min(
         (
@@ -438,33 +443,51 @@ def find_biconnected_code(G, A, B):
 
 def find_planar_code(G):
     assert nx.is_planar(G)
-    bcs = list(nx.biconnected_components(G))
-    articulation_points = set(nx.articulation_points(G))
-    print("Biconnected components:", bcs)
     A = defaultdict(str)
 
-    for v in articulation_points:
-        A[v] = v
-
-    B = defaultdict(str)
+    G = sageall.Graph(G)
     C = defaultdict(str)
+    T = connectivity.blocks_and_cuts_tree(G)
 
-    T = biconnected_components_to_tree(bcs)
-    print("Tree:", T.nodes, T.edges)
+    # while there is more than one vertex in the tree
+    while T.order() > 1:
+        leaves = [v for v in T if T.degree(v) == 1]
 
-    while len(T.nodes) > 1:
-        leafs = [v for v in T.nodes if T.degree(v) == 1]
+        for leaf in leaves:
+            C[leaf] = find_biconnected_code(G.subgraph(leaf[1]), A)
 
-        for v in leafs[::-1]:
-            print("Leaf:", v)
-            C[v] = find_biconnected_code(G.subgraph(v), A, B[v])
-            print("C[v]:", C[v])
-            return
+        # a leaf can only be adjacent to a cut node anyway
+        # articulation_points = set(itertools.chain([T[leaf] for leaf in leaves]))
+        articulation_points = set()
+        for leaf in leaves:
+            for neigh in T[leaf]:
+                articulation_points.add(neigh)
 
-        # for all articulation points adjacent to leafs
-        # leafs_neighbors = set(itertools.chain(*[T.neighbors(v) for v in leafs]))
-        # for articulation_points in leafs_neighbors.intersection(articulation_points):
-        #     # B[articulation_points] = find_bionnected_code(A, B[articulation_points])
+        for articulation_point in articulation_points:
+            codes = []
+            for leaf in [v for v in T[articulation_point] if T.degree(v) == 1]:
+                codes.append(C[leaf])
+
+            A[articulation_point[1]] += "(A"
+            for code in sorted(codes):
+                A[articulation_point[1]] += code
+
+            A[articulation_point[1]] += ")A"
+
+        # delete from T all leaves
+        T.delete_vertices(leaves)
+
+        # delete from T all articulation points with degree 1
+        T.delete_vertices([v for v in articulation_points if T.degree(v) == 1])
+
+    # the last node in the blocks and cuts tree
+    v = next(T.vertex_iterator())
+
+    if v[0] == "C":  # articulation point
+        return A[v[1]]
+
+    # else the last node is a biconnected component
+    return find_biconnected_code(G.subgraph(v[1]), A)
 
 
 G = nx.Graph()
@@ -492,9 +515,5 @@ G.add_edges_from(
         (6, 10),
     ]
 )
-
-D = sageall.Graph(G).to_directed()
-D.is_planar(set_embedding=True)
-print(D._embedding)
 
 print(find_planar_code(G))
