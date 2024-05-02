@@ -185,6 +185,28 @@ def code_of_R_root_node(root, A, tree):
     def get_code_for_edge(edge, direction):
         code = "(R"
 
+        tour = weinberg(skeleton, edge, direction)
+
+        for edge in tour:
+            if is_virtual(edge):
+                code += CV[edge]
+            if edge[0] in A:
+                code += str(A[edge[1]])
+                del A[edge[1]]
+
+        if tour[-1][0] in A:
+            code += str(A[tour[-1][0]])
+            del A[tour[-1][0]]
+
+        code += ")R"
+        return code
+
+    return min(
+        get_code_for_edge(edge, direction)
+        for edge in filter(is_virtual, skeleton.edge_iterator())
+        for direction in ["left", "right"]
+    )
+
 
 def find_biconnected_codes_from_root(root, A, tree):
     code = "(B"
