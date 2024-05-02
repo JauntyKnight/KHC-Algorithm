@@ -16,14 +16,14 @@ def get_twin_edge(edge, tree, node):
     Let T be SPQR tree, and let e be a virtual edge
     """
 
-    u, v, _ = edge
+    u, v, label = edge
     for neigh in tree.neighbor_out_iterator(node):
         neigh_skeleton = set(neigh[1].vertex_iterator())
         if u in neigh_skeleton and v in neigh_skeleton:
             # get the edge from u to v
-            for u_, v_, label in get_skeleton(neigh).edge_iterator():
-                if u_ == u and v_ == v:
-                    return (u, v, label), neigh
+            for edge_ in get_skeleton(neigh).edge_iterator():
+                if edge == edge_:
+                    return edge, neigh
 
     return None, None
 
@@ -117,18 +117,24 @@ def code_of_S_root_node(root, A, tree):
         result += str(skeleton.size()) + " "
 
         e = next(filter(lambda x: x[1] != u and x[0] == v, skeleton.edges_incident(v)))
+        print("Start edge:", edge)
+        print("First edge:", e)
         e_in = e
         tour_counter = 1
+
+        virtual_edge_codes = ""
+
         while True:
             if is_virtual(e):
                 result += str(tour_counter) + " "
-                result += CV[e]
+                virtual_edge_codes += CV[e]
             if e[1] in A:
                 result += str(tour_counter) + " "
-                result += "* "
+                result += "@ "
                 result += str(A[e[1]]) + " "
-                del A[e[1]]
+                # del A[e[1]]
 
+            print("Counter:", tour_counter, e, result)
             e = next(
                 filter(
                     lambda x: x[1] != e[0] and x[0] == e[1],
@@ -140,6 +146,7 @@ def code_of_S_root_node(root, A, tree):
             if e == e_in:
                 break
 
+        result += virtual_edge_codes
         result += ")S "
         print("Result:", result)
         return result
@@ -174,9 +181,9 @@ def code_of_P_root_node(root, A, tree):
             result += code
 
         if v in A:
-            result += "* "
+            result += "@ "
             result += str(A[v]) + " "
-            del A[v]
+            # del A[v]
 
         result += ")P "
         return result
@@ -184,8 +191,9 @@ def code_of_P_root_node(root, A, tree):
     return min(get_code_for_vertex(v) for v in skeleton.vertex_iterator())
 
 
-def get_code_for_edge(skeleton, CV, A, edge, direction):
+def get_code_for_edge(skeleton, CV, A, e_in, direction):
     code = "(R "
+    print("CV:", CV)
 
     print("Skeleton R")
     print(list(skeleton.vertex_iterator()))
@@ -193,21 +201,40 @@ def get_code_for_edge(skeleton, CV, A, edge, direction):
     print(list(skeleton.edge_iterator()))
     skeleton_simple = skeleton.to_simple()
 
-    tour = weinberg(skeleton, skeleton_simple, edge, direction)
+    tour = weinberg(skeleton, skeleton_simple, e_in, direction)
+    visited_nodes = {}
 
     for edge in tour:
         print("Edge:", edge)
-        if is_virtual(edge):
+        if edge[0] not in visited_nodes:
+            visited_nodes[edge[0]] = len(visited_nodes) + 1
+        code += f"{visited_nodes[edge[0]]} "
+        if e_in != edge and is_virtual(edge) and edge in CV:
             code += CV[edge]
         if edge[0] in A:
-            code += str(A[edge[1]]) + " "
-            del A[edge[1]]
+            print(edge[0], A)
+            code += "@ "
+            # del A[edge[1]]
+
+    # account for the last vertex
+    last_edge = tour[-1]
+    if last_edge[1] not in visited_nodes:
+        visited_nodes[last_edge[1]] = len(visited_nodes) + 1
+    code += f"{visited_nodes[last_edge[1]]} "
+
+    if last_edge[1] in A:
+        code += "@ "
+        # code += str(A[last_edge[1]]) + " "
+        # del A[last_edge[1]]
 
     if tour[-1][0] in A:
         code += str(A[tour[-1][0]]) + " "
-        del A[tour[-1][0]]
+        # del A[tour[-1][0]]
 
     code += ")R "
+
+    print("R code:", code)
+
     return code
 
 
@@ -268,9 +295,9 @@ def find_code_S_non_root(e_in, node, A, tree):
             code += find_code(twin_edge, neigh, A, tree)
         if e[1] in A:
             code += str(tour_counter) + " "
-            code += "* "
+            code += "@ "
             code += str(A[e[1]]) + " "
-            del A[e[1]]
+            # del A[e[1]]
 
         e = next(
             filter(
@@ -289,6 +316,7 @@ def find_code_P_non_root(e_in, node, A, tree):
     skeleton = get_skeleton(node)
 
     CV = {}
+    print("P edges:", list(skeleton.edge_iterator()))
     for edge in filter(
         lambda x: x[0] == e_in[0] and x != e_in,
         filter(is_virtual, skeleton.edge_iterator()),
@@ -300,6 +328,8 @@ def find_code_P_non_root(e_in, node, A, tree):
 
         CV[edge] = find_code(twin_edge, neigh, A, tree)
 
+    print("P CV:", CV)
+
     result = "(P "
     result += str(skeleton.size()) + " "
     result += (
@@ -310,9 +340,9 @@ def find_code_P_non_root(e_in, node, A, tree):
         result += code
 
     if e_in[1] in A:
-        result += "* "
+        result += "@ "
         result += str(A[e_in[1]]) + " "
-        del A[e_in[1]]
+        # del A[e_in[1]]
 
     result += ")P "
 
@@ -412,6 +442,10 @@ def find_planar_code(G):
     articulation_points = set(nx.articulation_points(G))
     print("Biconnected components:", bcs)
     A = defaultdict(str)
+
+    for v in articulation_points:
+        A[v] = v
+
     B = defaultdict(str)
     C = defaultdict(str)
 
