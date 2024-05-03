@@ -121,6 +121,8 @@ def code_of_S_root_node(root, A, tree):
 
         CV[edge] = find_code(twin_edge, neigh, A, tree)
 
+    print("S nodes:", list(skeleton.vertex_iterator()))
+
     # if len(CV) == 0:
     #     return f"<S {skeleton.size()} )S "
 
@@ -163,6 +165,7 @@ def code_of_S_root_node(root, A, tree):
         result.extend(virtual_edge_codes)
         result.append(S_CLOSE)
         # print("Result:", result)
+        print("Result:", code_to_string(result))
         return result
 
     return min((get_code_for_edge(edge) for edge in skeleton.edge_iterator()))
@@ -459,10 +462,10 @@ def find_biconnected_code(G, A):
 
 def find_planar_code(G):
     assert nx.is_planar(G)
-    A = defaultdict(str)
+    A = {}
 
     G = sageall.Graph(G)
-    C = defaultdict(str)
+    C = {}
     T = connectivity.blocks_and_cuts_tree(G)
 
     for v in T.vertex_iterator():
@@ -471,6 +474,7 @@ def find_planar_code(G):
 
     # while there is more than one vertex in the tree
     while T.order() > 1:
+        print("T:", list(T.vertex_iterator()))
         leaves = [v for v in T if T.degree(v) == 1]
 
         for leaf in leaves:
@@ -489,7 +493,7 @@ def find_planar_code(G):
                 codes.append(C[leaf])
                 # print("Leaf:", leaf, C[leaf])
 
-            A[articulation_point[1]] = [A_OPEN]
+            A[articulation_point[1]].append(A_OPEN)
             for code in sorted(codes):
                 A[articulation_point[1]].extend(code)
 
