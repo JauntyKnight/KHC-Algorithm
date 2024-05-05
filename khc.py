@@ -64,7 +64,6 @@ def weinberg(G, G_simple, start_edge, direction):
         G_simple.is_planar(set_embedding=True)
 
     embedding = G_simple._embedding
-    # print("Embedding:", embedding)
 
     visited_vertices = set()
     visited_edges = set()
@@ -88,8 +87,6 @@ def weinberg(G, G_simple, start_edge, direction):
     edge = (start_edge[0], start_edge[1])
 
     code = []
-    # print("Start edge:", edge)
-    # print("Direction", direction)
 
     while True:
         visited_vertices.add(edge[0])
@@ -110,7 +107,6 @@ def weinberg(G, G_simple, start_edge, direction):
 
 
 def code_of_S_root_node(root, A, tree):
-    # print("entering S root">
     CV = {}
     skeleton = get_skeleton(root)
     for edge in filter(is_virtual, skeleton.edge_iterator()):
@@ -121,19 +117,12 @@ def code_of_S_root_node(root, A, tree):
 
         CV[edge] = find_code(twin_edge, neigh, A, tree)
 
-    print("S nodes:", list(skeleton.vertex_iterator()))
-
-    # if len(CV) == 0:
-    #     return f"<S {skeleton.size()} )S "
-
     def get_code_for_edge(edge):
         u, v, label = edge
         result = [S_OPEN]
         result.append(skeleton.size())
 
         e = next(filter(lambda x: x[1] != u and x[0] == v, skeleton.edges_incident(v)))
-        # print("Start edge:", edge)
-        # print("First edge:", e)
         e_in = e
         tour_counter = 1
 
@@ -143,14 +132,12 @@ def code_of_S_root_node(root, A, tree):
             if is_virtual(e):
                 result.append(tour_counter)
                 virtual_edge_codes.extend(CV[e])
-            # print("E:", e)
             if e[1] in A:
                 result.append(tour_counter)
                 result.append(STAR)
                 result.extend(A[e[1]])
                 # del A[e[1]]
 
-            # print("Counter:", tour_counter, e, result)
             e = next(
                 filter(
                     lambda x: x[1] != e[0] and x[0] == e[1],
@@ -164,15 +151,13 @@ def code_of_S_root_node(root, A, tree):
 
         result.extend(virtual_edge_codes)
         result.append(S_CLOSE)
-        # print("Result:", result)
-        print("Result:", code_to_string(result))
+
         return result
 
     return min((get_code_for_edge(edge) for edge in skeleton.edge_iterator()))
 
 
 def code_of_P_root_node(root, A, tree):
-    # print("entering P root">
     CV = {}
     skeleton = get_skeleton(root)
 
@@ -212,26 +197,18 @@ def code_of_P_root_node(root, A, tree):
 
 def get_code_for_edge(skeleton, CV, A, e_in, direction):
     code = [R_OPEN]
-    # print("CV:", CV)
-
-    # print("Skeleton T">
-    # print(list(skeleton.vertex_iterator()))
-    # print(skeleton.is_directed())
-    # print(list(skeleton.edge_iterator()))
     skeleton_simple = skeleton.to_simple()
 
     tour = weinberg(skeleton, skeleton_simple, e_in, direction)
     visited_nodes = {}
 
     for edge in tour:
-        # print("Edge:", edge)
         if edge[0] not in visited_nodes:
             visited_nodes[edge[0]] = len(visited_nodes) + 1
         code.append(visited_nodes[edge[0]])
         if e_in != edge and is_virtual(edge) and edge in CV:
             code.extend(CV[edge])
         if edge[0] in A:
-            # print(edge[0], A)
             code.append(STAR)
             # del A[edge[1]]
 
@@ -243,7 +220,6 @@ def get_code_for_edge(skeleton, CV, A, e_in, direction):
 
     if last_edge[1] in A:
         code.append(STAR)
-        # code += str(A[last_edge[1]]) + " "
         # del A[last_edge[1]]
 
     if tour[-1][0] in A:
@@ -281,7 +257,6 @@ def code_of_R_root_node(root, A, tree):
 
 
 def find_code_R_non_root(e_in, node, A, tree):
-    # print("entering T non root">
     CV = {}
     skeleton = get_skeleton(node)
 
@@ -300,7 +275,6 @@ def find_code_R_non_root(e_in, node, A, tree):
 
 
 def find_code_S_non_root(e_in, node, A, tree):
-    # print("entering S non root">
     skeleton = get_skeleton(node)
     code = [S_OPEN]
     code.append(skeleton.size())
@@ -334,11 +308,9 @@ def find_code_S_non_root(e_in, node, A, tree):
 
 
 def find_code_P_non_root(e_in, node, A, tree):
-    # print("entering P non root">
     skeleton = get_skeleton(node)
 
     CV = {}
-    # print("P edges:", list(skeleton.edge_iterator()))
     for edge in filter(
         lambda x: x[0] == e_in[0] and x != e_in,
         filter(is_virtual, skeleton.edge_iterator()),
@@ -349,8 +321,6 @@ def find_code_P_non_root(e_in, node, A, tree):
             continue
 
         CV[edge] = find_code(twin_edge, neigh, A, tree)
-
-    # print("P CV:", CV)
 
     result = [P_OPEN]
     result.append(skeleton.size())
@@ -370,26 +340,6 @@ def find_code_P_non_root(e_in, node, A, tree):
 
 
 def find_biconnected_codes_from_root(root, A, tree):
-    # print("Is directed:", tree.is_directed())
-    # print("Skeleton:")
-    # print(list(tree.edge_iterator()))
-    # for node in tree.vertex_iterator():
-    #     print(
-    #         "Node:",
-    #         node,
-    #         list(get_skeleton(node).vertex_iterator()),
-    #         list(get_skeleton(node).edge_iterator()),
-    #     )
-    #     print(
-    #         "Edges:",
-    #         [list(get_skeleton(node).vertex_iterator()) for node in tree[node]],
-    #     )
-
-    # print(
-    #     "Centers:",
-    #     [list(get_skeleton(center).vertex_iterator()) for center in tree.center()],
-    # )
-
     code = [B_OPEN]
 
     node_type = root[0]
@@ -428,16 +378,9 @@ def biconnected_components_to_tree(bcs):
 
 def make_directed_tree(tree, center):
     ### List to store directed edges and avoid the gb
-    # directed_edges = list(tree.breadth_first_search(center, edges=True))
-    # print("Directed edges:", list(directed_edges))
     tree_directed = sageall.DiGraph()
     tree_directed.add_vertices(tree.vertex_iterator())
     tree_directed.add_edges(tree.breadth_first_search(center, edges=True))
-
-    # for edge in tree.breadth_first_search(center, edges=True):
-    #     u, v = edge
-    #     tree_directed.add_edge(u, v)
-
     return tree_directed
 
 
@@ -474,7 +417,6 @@ def find_planar_code(G):
 
     # while there is more than one vertex in the tree
     while T.order() > 1:
-        print("T:", list(T.vertex_iterator()))
         leaves = [v for v in T if T.degree(v) == 1]
 
         for leaf in leaves:
@@ -491,16 +433,12 @@ def find_planar_code(G):
             codes = []
             for leaf in [v for v in T[articulation_point] if T.degree(v) == 1]:
                 codes.append(C[leaf])
-                # print("Leaf:", leaf, C[leaf])
 
             A[articulation_point[1]].append(A_OPEN)
             for code in sorted(codes):
                 A[articulation_point[1]].extend(code)
 
             A[articulation_point[1]].append(A_CLOSE)
-
-        # print("A:", A)
-        # print("Finished a round")
 
         # delete from T all leaves
         T.delete_vertices(leaves)
@@ -515,7 +453,6 @@ def find_planar_code(G):
         return A[v[1]]
 
     # else the last node is a biconnected component
-    # print(v[1])
     return find_biconnected_code(G.subgraph(v[1]), A)
 
 
