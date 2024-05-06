@@ -109,7 +109,7 @@ def find_code(edge, neigh, A, tree):
     """
     type, _ = neigh
 
-    if type == "T":
+    if type == "R":
         return find_code_R_non_root(edge, neigh, A, tree)
     elif type == "S":
         return find_code_S_non_root(edge, neigh, A, tree)
@@ -531,7 +531,7 @@ def find_biconnected_codes_from_root(root, A, tree):
         code.extend(code_of_S_root_node(root, A, tree))
     elif node_type == "P" or node_type == "Q":
         code.extend(code_of_P_root_node(root, A, tree))
-    elif node_type == "T":
+    elif node_type == "R":
         code.extend(code_of_R_root_node(root, A, tree))
     else:
         raise ValueError(f"Unknown node type: {node_type}")
@@ -595,6 +595,9 @@ def find_planar_code(G):
     Algorithm and Experiments in Testing Planar Graphs for Isomorphism, by Kuklu et al
     """
     assert G.is_planar()
+
+    if G.order() == 1:
+        return [1]
 
     A = {}
     G = sageall.Graph(G)
