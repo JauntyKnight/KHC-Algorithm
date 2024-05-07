@@ -64,6 +64,57 @@ def count_virtual_edges(skeleton):
     return num_virtual_edges
 
 
+def next_edge_tour(edge, skeleton):
+    """
+    Returns the next edge in a tour of the skeleton of a node in a SPQR tree.
+
+    Params:
+        - `edge`: the edge to start the tour from
+        - `skeleton`: the skeleton of the node
+    Returns:
+        The next edge in the tour
+    """
+    u, v, _ = edge
+    return next(
+        filter(
+            lambda x: x[1] != u and x[0] == v,
+            skeleton.edges_incident(v),
+        )
+    )
+
+
+def get_virtual_edges_codes(edge_iterator, node, tree, A):
+    """
+    Computes the codes of the virtual edges in a node of a SPQR tree.
+
+    Params:
+        - `edge_iterator`: the virtual edges to compute the codes for
+        - `node`: the node containing the edges
+        - `tree`: the SPQR tree
+        - `A`: the dictionary of articulation points and their codes
+    Returns:
+        A dictionary of the virtual edges and their codes
+    """
+    virtual_edges_codes = {}
+
+    for edge in edge_iterator:
+        twin_edge, neigh = get_twin_edge(edge, tree, node)
+        if twin_edge is None:
+            continue
+
+        virtual_edges_codes[edge] = find_code(twin_edge, neigh, A, tree)
+
+    return virtual_edges_codes
+
+
+def articulation_to_iterable(articulation):
+    """
+    Converts an articulation point to an iterable.
+    """
+
+    return (item for component in articulation for item in component)
+
+
 def get_twin_edge(edge, tree, node):
     """
     Finds the twin edge, together with the node containing it, of a virtual edge in a SPQR tree.
@@ -119,6 +170,50 @@ def find_code(edge, neigh, A, tree):
         raise ValueError(f"Unknown node type: {type}")
 
 
+def find_code_S_helper(e_in, stop_edge, virtual_edges_codes, node, A):
+    """
+    Helper function to compute the code of an edge in a node of type S in a SPQR tree.
+
+    Params:
+        - `e_in`: starting edge of the tour
+        - `stop_edge`: the edge to stop the tour at
+        - `virtual_edges_codes`: the dictionary of virtual edges and their codes
+        - `node`: the node containing the edge
+        - `A`: the dictionary of articulation points and their codes
+    """
+
+    skeleton = get_skeleton(node)
+    code = []
+    code.append(S_OPEN)
+    code.append(skeleton.size())
+
+    e = e_in
+    tour_counter = 1
+    tour_edges_codes = []
+
+    while True:
+        if e in virtual_edges_codes:
+            code.append(tour_counter)
+            tour_edges_codes.extend(virtual_edges_codes[e])
+
+        if e[1] in A:
+            code.append(tour_counter)
+            code.append(STAR)
+            code.extend(articulation_to_iterable(A[e[1]]))
+
+        e = next_edge_tour(e, skeleton)
+
+        if e == stop_edge:
+            break
+
+        tour_counter += 1
+
+    code.extend(tour_edges_codes)
+    code.append(S_CLOSE)
+
+    return code
+
+
 def code_of_S_root_node(root, A, tree):
     """
     Computes the code of a root node of type S in a SPQR tree.
@@ -131,17 +226,13 @@ def code_of_S_root_node(root, A, tree):
     Returns:
         The code of the root node (as a list of integers).
     """
-    virtual_edges_codes = {}  # dictionary to store the codes of the virtual edges
     skeleton = get_skeleton(root)
 
-    # compute the codes of the virtual edges
-    for edge in filter(is_virtual, skeleton.edge_iterator()):
-        twin_edge, neigh = get_twin_edge(edge, tree, root)
-        virtual_edges_codes[edge] = find_code(twin_edge, neigh, A, tree)
+    virtual_edges_codes = get_virtual_edges_codes(
+        filter(is_virtual, skeleton.edge_iterator()), root, tree, A
+    )
 
     # if there are no virtua edges, and no articulation points
-    # return (S skeleton.size )S
-
     if not virtual_edges_codes and not (set(skeleton.vertex_iterator()) & set(A)):
         code = []
         code.append(S_OPEN)
@@ -149,50 +240,43 @@ def code_of_S_root_node(root, A, tree):
         code.append(S_CLOSE)
         return code
 
-    def get_code_for_edge(edge):
-        """
-        Follows the cycle graph (the skeleton of S) in the direction of `edge`
-        and returns the code of the cycle.
-        """
-        u, v, _ = edge
-        code = []
-        code.append(S_OPEN)
-        code.append(skeleton.size())
-
-        # the next edge in the direction of `edge`
-        e = next(filter(lambda x: x[1] != u and x[0] == v, skeleton.edges_incident(v)))
-        e_in = e
-        tour_counter = 1
-
-        tour_edge_codes = []
-
-        while True:
-            if is_virtual(e):
-                code.append(tour_counter)
-                tour_edge_codes.extend(virtual_edges_codes[e])
-            if e[1] in A:
-                code.append(tour_counter)
-                code.append(STAR)
-                code.extend([item for articulation in A[e[1]] for item in articulation])
-                # del A[e[1]]
-
-            e = next(
-                filter(
-                    lambda x: x[1] != e[0] and x[0] == e[1],
-                    skeleton.edges_incident(e[1]),
-                )
+    return min(
+        (
+            find_code_S_helper(
+                next_edge_tour(edge, skeleton),
+                next_edge_tour(edge, skeleton),
+                virtual_edges_codes,
+                root,
+                A,
             )
-            tour_counter += 1
+        )
+        for edge in skeleton.edge_iterator()
+    )
 
-            if e == e_in:
-                break
 
-        code.extend(tour_edge_codes)
-        code.append(S_CLOSE)
+def find_code_S_non_root(e_in, node, A, tree):
+    """
+    Computes the code of a non-root node of type S in a SPQR tree.
 
-        return code
+    Params:
+        - `e_in`: the edge to compute the code for
+        - `node`: the node containing the edge
+        - `A`: the dictionary of articulation points and their codes
+        - `tree`: the SPQR tree
 
-    return min((get_code_for_edge(edge) for edge in skeleton.edge_iterator()))
+    Returns:
+        The code of the edge (as a list of integers).
+    """
+
+    skeleton = get_skeleton(node)
+
+    virtual_edges_codes = get_virtual_edges_codes(
+        filter(is_virtual, skeleton.edge_iterator()), node, tree, A
+    )
+
+    return find_code_S_helper(
+        next_edge_tour(e_in, skeleton), e_in, virtual_edges_codes, node, A
+    )
 
 
 def code_of_P_root_node(root, A, tree):
@@ -208,13 +292,11 @@ def code_of_P_root_node(root, A, tree):
         The code of the root node (as a list of integers).
     """
 
-    virtual_edges_codes = {}
     skeleton = get_skeleton(root)
 
-    # compute the codes of the virtual edges
-    for edge in filter(is_virtual, skeleton.edge_iterator()):
-        twin_edge, neigh = get_twin_edge(edge, tree, root)
-        virtual_edges_codes[edge] = find_code(twin_edge, neigh, A, tree)
+    virtual_edges_codes = get_virtual_edges_codes(
+        filter(is_virtual, skeleton.edge_iterator()), root, tree, A
+    )
 
     def get_code_for_vertex(v):
         """
@@ -431,60 +513,6 @@ def find_code_R_non_root(e_in, node, A, tree):
         get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A)
         for direction in ["left", "right"]
     )
-
-
-def find_code_S_non_root(e_in, node, A, tree):
-    """
-    Computes the code of a non-root node of type S in a SPQR tree.
-
-    Params:
-        - `e_in`: the edge to compute the code for
-        - `node`: the node containing the edge
-        - `A`: the dictionary of articulation points and their codes
-        - `tree`: the SPQR tree
-
-    Returns:
-        The code of the edge (as a list of integers).
-    """
-
-    skeleton = get_skeleton(node)
-    code = []
-    code.append(S_OPEN)
-    code.append(skeleton.size())
-    u, v, label = e_in
-
-    # the next edge in the direction of `e_in`
-    e = next(filter(lambda x: x[1] != u and x[0] == v, skeleton.edges_incident(v)))
-    tour_counter = 1
-
-    tour_edges_codes = []
-
-    while e != e_in:
-        if is_virtual(e):
-            twin_edge, neigh = get_twin_edge(e, tree, node)
-            if twin_edge is None:
-                continue
-
-            code.append(tour_counter)
-            tour_edges_codes.extend(find_code(twin_edge, neigh, A, tree))
-        if e[1] in A:
-            code.append(tour_counter)
-            code.append(STAR)
-            code.extend([item for articulation in A[e[1]] for item in articulation])
-            # del A[e[1]]
-
-        # get the next edge in the direction of `e`
-        e = next(
-            filter(
-                lambda x: x[1] != e[0] and x[0] == e[1],
-                skeleton.edges_incident(e[1]),
-            )
-        )
-        tour_counter += 1
-
-    code.extend(tour_edges_codes)
-    code.append(S_CLOSE)
-    return code
 
 
 def find_code_P_non_root(e_in, node, A, tree):
