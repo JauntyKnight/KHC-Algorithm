@@ -139,13 +139,24 @@ def code_of_S_root_node(root, A, tree):
         twin_edge, neigh = get_twin_edge(edge, tree, root)
         virtual_edges_codes[edge] = find_code(twin_edge, neigh, A, tree)
 
+    # if there are no virtua edges, and no articulation points
+    # return (S skeleton.size )S
+
+    if not virtual_edges_codes and not (set(skeleton.vertex_iterator()) & set(A)):
+        code = []
+        code.append(S_OPEN)
+        code.append(skeleton.size())
+        code.append(S_CLOSE)
+        return code
+
     def get_code_for_edge(edge):
         """
         Follows the cycle graph (the skeleton of S) in the direction of `edge`
         and returns the code of the cycle.
         """
         u, v, _ = edge
-        code = [S_OPEN]
+        code = []
+        code.append(S_OPEN)
         code.append(skeleton.size())
 
         # the next edge in the direction of `edge`
@@ -153,16 +164,16 @@ def code_of_S_root_node(root, A, tree):
         e_in = e
         tour_counter = 1
 
-        virtual_edge_codes = []
+        tour_edge_codes = []
 
         while True:
             if is_virtual(e):
                 code.append(tour_counter)
-                virtual_edge_codes.extend(virtual_edges_codes[e])
+                tour_edge_codes.extend(virtual_edges_codes[e])
             if e[1] in A:
                 code.append(tour_counter)
                 code.append(STAR)
-                code.extend(A[e[1]])
+                code.extend([item for articulation in A[e[1]] for item in articulation])
                 # del A[e[1]]
 
             e = next(
@@ -176,7 +187,7 @@ def code_of_S_root_node(root, A, tree):
             if e == e_in:
                 break
 
-        code.extend(virtual_edge_codes)
+        code.extend(tour_edge_codes)
         code.append(S_CLOSE)
 
         return code
@@ -209,23 +220,29 @@ def code_of_P_root_node(root, A, tree):
         """
         Helper function to get the code of one of the two vertices of the P node.
         """
-        code = [P_OPEN]
+        code = []
+        code.append(P_OPEN)
         code.append(skeleton.size())
         code.append(count_virtual_edges(skeleton))
 
-        for edge_code in sorted(virtual_edges_codes.values()):
+        for edge, edge_code in sorted(
+            filter(lambda x: x[0][0] == v, virtual_edges_codes.items()),
+            key=lambda x: x[1],
+        ):
             code.extend(edge_code)
 
         if v in A:
-            code.extend(A[v])
             code.append(STAR)
+            code.extend([item for articulation in A[v] for item in articulation])
             # del A[v]
 
         other_vertex = next(filter(lambda x: x != v, skeleton.vertex_iterator()))
 
         if other_vertex in A:
-            code.extend(A[other_vertex])
             code.append(STAR)
+            code.extend(
+                [item for articulation in A[other_vertex] for item in articulation]
+            )
             # del A[other_vertex]
 
         code.append(P_CLOSE)
@@ -318,7 +335,8 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
     Returns:
         The code of the edge (as a list of integers).
     """
-    code = [R_OPEN]
+    code = []
+    code.append(R_OPEN)
 
     # necessary because sage cannot compute embeddings for directed graphs
     skeleton_simple = skeleton.to_simple()
@@ -331,10 +349,11 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
         if edge[0] not in visited_nodes:
             visited_nodes[edge[0]] = len(visited_nodes) + 1
         code.append(visited_nodes[edge[0]])
-        if e_in != edge and is_virtual(edge) and edge in virtual_edges_codes:
+        if is_virtual(edge) and edge in virtual_edges_codes:
             code.extend(virtual_edges_codes[edge])
         if edge[0] in A:
             code.append(STAR)
+            code.extend([item for articulation in A[edge[0]] for item in articulation])
             # del A[edge[1]]
 
     # account for the last vertex
@@ -345,11 +364,12 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
 
     if last_edge[1] in A:
         code.append(STAR)
+        code.extend([item for articulation in A[last_edge[1]] for item in articulation])
         # del A[last_edge[1]]
 
-    if tour[-1][0] in A:
-        code.extend(A[tour[-1][0]])
-        # del A[tour[-1][0]]
+    # if tour[-1][0] in A:
+    #     code.extend([item for articulation in A[tour[-1][0]] for item in articulation])
+    # del A[tour[-1][0]]
 
     code.append(R_CLOSE)
     return code
@@ -428,13 +448,16 @@ def find_code_S_non_root(e_in, node, A, tree):
     """
 
     skeleton = get_skeleton(node)
-    code = [S_OPEN]
+    code = []
+    code.append(S_OPEN)
     code.append(skeleton.size())
     u, v, label = e_in
 
     # the next edge in the direction of `e_in`
     e = next(filter(lambda x: x[1] != u and x[0] == v, skeleton.edges_incident(v)))
     tour_counter = 1
+
+    tour_edges_codes = []
 
     while e != e_in:
         if is_virtual(e):
@@ -443,11 +466,11 @@ def find_code_S_non_root(e_in, node, A, tree):
                 continue
 
             code.append(tour_counter)
-            code.extend(find_code(twin_edge, neigh, A, tree))
+            tour_edges_codes.extend(find_code(twin_edge, neigh, A, tree))
         if e[1] in A:
             code.append(tour_counter)
             code.append(STAR)
-            code.extend(A[e[1]])
+            code.extend([item for articulation in A[e[1]] for item in articulation])
             # del A[e[1]]
 
         # get the next edge in the direction of `e`
@@ -459,6 +482,7 @@ def find_code_S_non_root(e_in, node, A, tree):
         )
         tour_counter += 1
 
+    code.extend(tour_edges_codes)
     code.append(S_CLOSE)
     return code
 
@@ -482,7 +506,7 @@ def find_code_P_non_root(e_in, node, A, tree):
 
     # compute the codes of the virtual edges in the same direction as e_in
     for edge in filter(
-        lambda x: x[0] == e_in[0] and x != e_in,
+        lambda x: x[0] == e_in[0],
         filter(is_virtual, skeleton.edge_iterator()),
     ):
         twin_edge, neigh = get_twin_edge(edge, tree, node)
@@ -499,9 +523,14 @@ def find_code_P_non_root(e_in, node, A, tree):
     for edge_code in sorted(virtual_edges_codes.values()):
         code.extend(edge_code)
 
+    if e_in[0] in A:
+        code.append(STAR)
+        code.extend([item for articulation in A[e_in[0]] for item in articulation])
+        # del A[e_in[0]]
+
     if e_in[1] in A:
         code.append(STAR)
-        code.extend(A[e_in[1]])
+        code.extend([item for articulation in A[e_in[1]] for item in articulation])
         # del A[e_in[1]]
 
     code.append(P_CLOSE)
@@ -623,15 +652,18 @@ def find_planar_code(G):
                 articulation_points.add(neigh)
 
         for articulation_point in articulation_points:
-            codes = []
+            biconnected_neighs = []
             for leaf in [v for v in T[articulation_point] if T.degree(v) == 1]:
-                codes.append(C[leaf])
+                biconnected_neighs.append(C[leaf])
 
-            A[articulation_point[1]].append(A_OPEN)
-            for code in sorted(codes):
-                A[articulation_point[1]].extend(code)
+            previous_code = (
+                A[articulation_point[1]][1:-1] if A[articulation_point[1]] else []
+            )
+            A[articulation_point[1]] = [[A_OPEN]]
 
-            A[articulation_point[1]].append(A_CLOSE)
+            A[articulation_point[1]].extend(sorted(previous_code + biconnected_neighs))
+
+            A[articulation_point[1]].append([A_CLOSE])
 
         # delete from T all leaves
         T.delete_vertices(leaves)
@@ -643,7 +675,7 @@ def find_planar_code(G):
     v = next(T.vertex_iterator())
 
     if v[0] == "C":  # articulation point
-        return A[v[1]]
+        return [item for articulation in A[v[1]] for item in articulation]
 
     # else the last node is a biconnected component
     return find_biconnected_code(G.subgraph(v[1]), A)
