@@ -1,5 +1,8 @@
 import itertools
 import networkx as nx
+import numpy as np
+import functools
+import pickle
 
 from collections import defaultdict
 
@@ -8,6 +11,9 @@ from sage.graphs import connectivity
 
 SPECIAL_BASE = 10**5
 
+INTEGER = SPECIAL_BASE + 13
+C_CLOSE = SPECIAL_BASE + 12
+C_OPEN = SPECIAL_BASE + 11
 R_CLOSE = SPECIAL_BASE + 10
 R_OPEN = SPECIAL_BASE + 9
 S_CLOSE = SPECIAL_BASE + 8
@@ -19,6 +25,44 @@ B_OPEN = SPECIAL_BASE + 3
 A_CLOSE = SPECIAL_BASE + 2
 A_OPEN = SPECIAL_BASE + 1
 STAR = SPECIAL_BASE
+
+DIMS = 40
+SPECIAL_SYMBOLS = 14
+
+
+@functools.total_ordering
+class Atom:
+    def __init__(self, key, value=None):
+        self.key = key
+
+        # this atom represents a special symbol
+        if key >= SPECIAL_BASE:
+            self.value = np.zeros(DIMS + SPECIAL_SYMBOLS)
+            self.value[DIMS + key - SPECIAL_BASE] = value if key == INTEGER else 1
+        # this atom represents an integer meaningful to the code
+        elif key < SPECIAL_BASE and value is None:
+            self.value = np.zeros(DIMS + SPECIAL_SYMBOLS)
+            self.value[DIMS + INTEGER - SPECIAL_BASE] = key
+            return
+        # this atom represents a node
+        else:
+            self.value = np.concatenate(
+                [value, np.zeros(DIMS - len(value) + SPECIAL_SYMBOLS)]
+            )
+
+    def __eq__(self, other):
+        return self.key == other.key
+
+    def __lt__(self, other):
+        return self.key < other.key
+
+
+G = sageall.Graph()
+
+
+def get_vertex_feature(v):
+    return G.get_vertex(v)
+    # return np.zeros(1)
 
 
 def get_skeleton(node):
@@ -184,21 +228,31 @@ def find_code_S_helper(e_in, stop_edge, virtual_edges_codes, node, A):
 
     skeleton = get_skeleton(node)
     code = []
-    code.append(S_OPEN)
-    code.append(skeleton.size())
+    code.append(Atom(S_OPEN))
+    code.append(Atom(skeleton.size()))
+    # code.append(
+    #     Atom(
+    #         0,
+    #         np.sum([get_vertex_feature(v) for v in skeleton.vertex_iterator()], axis=0),
+    #     )
+    # )
 
     e = e_in
     tour_counter = 1
     tour_edges_codes = []
+    tour_vertices_codes = []
+
+    tour_vertices_codes.append(Atom(0, get_vertex_feature(e[0])))
 
     while True:
         if e in virtual_edges_codes:
-            code.append(tour_counter)
+            code.append(Atom(tour_counter))
+            tour_vertices_codes.append(Atom(0, get_vertex_feature(e[1])))
             tour_edges_codes.extend(virtual_edges_codes[e])
 
         if e[1] in A:
-            code.append(tour_counter)
-            code.append(STAR)
+            code.append(Atom(tour_counter))
+            code.append(Atom(STAR))
             code.extend(articulation_to_iterable(A[e[1]]))
 
         e = next_edge_tour(e, skeleton)
@@ -209,7 +263,8 @@ def find_code_S_helper(e_in, stop_edge, virtual_edges_codes, node, A):
         tour_counter += 1
 
     code.extend(tour_edges_codes)
-    code.append(S_CLOSE)
+    code.extend(tour_vertices_codes)
+    code.append(Atom(S_CLOSE))
 
     return code
 
@@ -233,12 +288,20 @@ def code_of_S_root_node(root, A, tree):
     )
 
     # if there are no virtua edges, and no articulation points
-    if not virtual_edges_codes and not (set(skeleton.vertex_iterator()) & set(A)):
-        code = []
-        code.append(S_OPEN)
-        code.append(skeleton.size())
-        code.append(S_CLOSE)
-        return code
+    # if not virtual_edges_codes and not (set(skeleton.vertex_iterator()) & set(A)):
+    #     code = []
+    #     code.append(Atom(S_OPEN))
+    #     code.append(Atom(skeleton.size()))
+    #     code.append(
+    #         Atom(
+    #             0,
+    #             np.sum(
+    #                 [get_vertex_feature(v) for v in skeleton.vertex_iterator()], axis=0
+    #             ),
+    #         )
+    #     )
+    #     code.append(Atom(S_CLOSE))
+    #     return code
 
     return min(
         (
@@ -289,11 +352,23 @@ def find_code_P_helper(source_vertex, virtual_edges_codes, skeleton, A):
         - `skeleton`: the skeleton of the node
         - `A`: the dictionary of articulation points and their codes
     """
+    other_vertex = next(
+        filter(lambda x: x != source_vertex, skeleton.vertex_iterator())
+    )
 
     code = []
-    code.append(P_OPEN)
-    code.append(skeleton.size())
-    code.append(count_virtual_edges(skeleton))
+    code.append(Atom(P_OPEN))
+    code.append(Atom(skeleton.size()))
+    code.append(Atom(count_virtual_edges(skeleton)))
+    # code.append(
+    #     Atom(
+    #         0,
+    #         np.sum([get_vertex_feature(v) for v in skeleton.vertex_iterator()], axis=0),
+    #     )
+    # )
+
+    code.append(Atom(0, get_vertex_feature(source_vertex)))
+    code.append(Atom(0, get_vertex_feature(other_vertex)))
 
     # sorted codes of virtual edges going from source_vertex to the other vertex
     tour_codes = sorted(
@@ -309,18 +384,14 @@ def find_code_P_helper(source_vertex, virtual_edges_codes, skeleton, A):
     code.extend(itertools.chain(*tour_codes))
 
     if source_vertex in A:
-        code.append(STAR)
+        code.append(Atom(STAR))
         code.extend(articulation_to_iterable(A[source_vertex]))
 
-    other_vertex = next(
-        filter(lambda x: x != source_vertex, skeleton.vertex_iterator())
-    )
-
     if other_vertex in A:
-        code.append(STAR)
+        code.append(Atom(STAR))
         code.extend(articulation_to_iterable(A[other_vertex]))
 
-    code.append(P_CLOSE)
+    code.append(Atom(P_CLOSE))
 
     return code
 
@@ -460,7 +531,7 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
         The code of the edge (as a list of integers).
     """
     code = []
-    code.append(R_OPEN)
+    code.append(Atom(R_OPEN))
 
     # necessary because sage cannot compute embeddings for directed graphs
     skeleton_simple = skeleton.to_simple()
@@ -472,30 +543,24 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
     for edge in tour:
         if edge[0] not in visited_nodes:
             visited_nodes[edge[0]] = len(visited_nodes) + 1
-        code.append(visited_nodes[edge[0]])
+        code.append(Atom(visited_nodes[edge[0]], get_vertex_feature(edge[0])))
         if is_virtual(edge) and edge in virtual_edges_codes:
             code.extend(virtual_edges_codes[edge])
         if edge[0] in A:
-            code.append(STAR)
-            code.extend([item for articulation in A[edge[0]] for item in articulation])
-            # del A[edge[1]]
+            code.append(Atom(STAR))
+            code.extend(articulation_to_iterable(A[edge[0]]))
 
     # account for the last vertex
     last_edge = tour[-1]
     if last_edge[1] not in visited_nodes:
         visited_nodes[last_edge[1]] = len(visited_nodes) + 1
-    code.append(visited_nodes[last_edge[1]])
+    code.append(Atom(visited_nodes[last_edge[1]], get_vertex_feature(last_edge[1])))
 
     if last_edge[1] in A:
-        code.append(STAR)
-        code.extend([item for articulation in A[last_edge[1]] for item in articulation])
-        # del A[last_edge[1]]
+        code.append(Atom(STAR))
+        code.extend(articulation_to_iterable(A[last_edge[1]]))
 
-    # if tour[-1][0] in A:
-    #     code.extend([item for articulation in A[tour[-1][0]] for item in articulation])
-    # del A[tour[-1][0]]
-
-    code.append(R_CLOSE)
+    code.append(Atom(R_CLOSE))
     return code
 
 
@@ -565,7 +630,7 @@ def find_biconnected_codes_from_root(root, A, tree):
     """
 
     code = []
-    code.append(B_OPEN)
+    code.append(Atom(B_OPEN))
 
     node_type = root[0]
 
@@ -578,7 +643,7 @@ def find_biconnected_codes_from_root(root, A, tree):
     else:
         raise ValueError(f"Unknown node type: {node_type}")
 
-    code.append(B_CLOSE)
+    code.append(Atom(B_CLOSE))
 
     return code
 
@@ -629,7 +694,7 @@ def find_biconnected_code(G, A):
     return min_code
 
 
-def find_planar_code(G):
+def find_planar_code_connected(G):
     """
     Computes the code of a planar graph.
 
@@ -637,9 +702,10 @@ def find_planar_code(G):
     Algorithm and Experiments in Testing Planar Graphs for Isomorphism, by Kuklu et al
     """
     assert G.is_planar()
+    assert G.is_connected()
 
     if G.order() == 1:
-        return [1]
+        return [Atom(1), Atom(0, get_vertex_feature(G.random_vertex()))]
 
     A = {}
     G = sageall.Graph(G)
@@ -649,6 +715,9 @@ def find_planar_code(G):
     for v in T.vertex_iterator():
         if v[0] == "C":
             A[v[1]] = []
+            # A[v[1]].append(
+            #     [Atom(A_OPEN), Atom(0, get_vertex_feature(v[1])), Atom(A_CLOSE)]
+            # )
 
     # while there is more than one vertex in the tree
     while T.order() > 1:
@@ -672,11 +741,11 @@ def find_planar_code(G):
             previous_code = (
                 A[articulation_point[1]][1:-1] if A[articulation_point[1]] else []
             )
-            A[articulation_point[1]] = [[A_OPEN]]
+            A[articulation_point[1]] = [[Atom(A_OPEN)]]
 
             A[articulation_point[1]].extend(sorted(previous_code + biconnected_neighs))
 
-            A[articulation_point[1]].append([A_CLOSE])
+            A[articulation_point[1]].append([Atom(A_CLOSE)])
 
         # delete from T all leaves
         T.delete_vertices(leaves)
@@ -692,6 +761,27 @@ def find_planar_code(G):
 
     # else the last node is a biconnected component
     return find_biconnected_code(G.subgraph(v[1]), A)
+
+
+def find_planar_code(G):
+    """
+    Computes the code of a planar graph.
+
+    See DOI:10.7155/jgaa.00094
+    Algorithm and Experiments in Testing Planar Graphs for Isomorphism, by Kuklu et al
+    """
+    graphs = list(G.connected_components_subgraphs())
+
+    subgraphs_codes = sorted([find_planar_code_connected(graph) for graph in graphs])
+
+    code = []
+
+    for subgraph_code in subgraphs_codes:
+        code.append(Atom(C_OPEN))
+        code.extend(subgraph_code)
+        code.append(Atom(C_CLOSE))
+
+    return code
 
 
 def code_to_string(code):
@@ -713,3 +803,81 @@ def code_to_string(code):
         special_chars_map[char] if char in special_chars_map else str(char)
         for char in code
     )
+
+
+one_hot = np.eye(DIMS)
+
+with open("tests/NCI109_node_labels.txt", "r") as f:
+    for node, label in enumerate(f, 1):
+        G.add_vertex(node)
+        G.set_vertex(node, one_hot[int(label)])
+        # G.set_vertex(node, np.zeros(1))
+
+with open("tests/NCI109_A.txt", "r") as f:
+    for line in f:
+        a, b = map(int, line.split(","))
+        G.add_edge(a, b)
+
+
+node_to_graph = {}
+graph_to_nodes = defaultdict(list)
+
+with open("tests/NCI109_graph_indicator.txt", "r") as f:
+    for node, graph in enumerate(f, 1):
+        node_to_graph[node] = int(graph)
+        graph_to_nodes[int(graph)].append(node)
+
+with open("tests/NCI109_graph_labels.txt", "r") as f:
+    graph_labels = np.array([int(line) for line in f])
+
+
+graphs = [G.subgraph(graph_to_nodes[i]) for i in graph_to_nodes]
+
+codes = {}
+
+
+print("Computing codes")
+for graph in graphs:
+    codes[node_to_graph[graph.random_vertex()]] = find_planar_code(graph)
+
+print("Finished computing codes")
+
+
+TP = 0
+FP = 0
+TN = 0
+FN = 0
+
+for i in range(len(graphs)):
+    code1 = codes[node_to_graph[next(graphs[i].vertex_iterator())]]
+    for j in range(i + 1, len(graphs)):
+        code2 = codes[node_to_graph[next(graphs[j].vertex_iterator())]]
+
+        is_isomorphic = graphs[i].is_isomorphic(graphs[j])
+        is_isomorphic_khc = code1 == code2
+
+        if is_isomorphic:
+            if is_isomorphic_khc:
+                TP += 1
+            else:
+                FN += 1
+        else:
+            if is_isomorphic_khc:
+                FP += 1
+            else:
+                TN += 1
+
+print(f"TP: {TP}, FP: {FP}, TN: {TN}, FN: {FN}")
+print(f"Accuracy: {(TP + TN) / (TP + FP + TN + FN)}")
+print(f"Precision: {TP / (TP + FP)}")
+print(f"Recall: {TP / (TP + FN)}")
+
+codes_sorted = [codes[id] for id in sorted(codes.keys())]
+codes_sorted = [np.array([atom.value for atom in code]) for code in codes_sorted]
+
+
+with open("NCI109_codes_vertices_tour_order_connected_marks.pkl", "wb") as f:
+    pickle.dump(codes_sorted, f)
+
+with open("NCI109_graph_labels.pkl", "wb") as f:
+    pickle.dump(graph_labels, f)
