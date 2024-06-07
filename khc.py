@@ -1,13 +1,12 @@
 import itertools
-import networkx as nx
-
-from collections import defaultdict
-
 import sage.all as sageall
 from sage.graphs import connectivity
 
+# defining a few constants representing special characters in the code
 SPECIAL_BASE = 10**5
 
+C_CLOSE = SPECIAL_BASE + 12
+C_OPEN = SPECIAL_BASE + 11
 R_CLOSE = SPECIAL_BASE + 10
 R_OPEN = SPECIAL_BASE + 9
 S_CLOSE = SPECIAL_BASE + 8
@@ -233,7 +232,9 @@ def code_of_S_root_node(root, A, tree):
     )
 
     # if there are no virtua edges, and no articulation points
-    if not virtual_edges_codes and not (set(skeleton.vertex_iterator()) & set(A)):
+    if not virtual_edges_codes and not (
+        set(skeleton.vertex_iterator()) & set(A)
+    ):
         code = []
         code.append(S_OPEN)
         code.append(skeleton.size())
@@ -433,7 +434,9 @@ def weinberg(G, G_simple, start_edge, direction):
             # if arrived at a new vertex, exit via the first edge
             # from the embedding in the corresponding direction
             edge = get_next_edge(edge, direction)
-        elif next_vertex in visited_vertices and edge[::-1] not in visited_edges:
+        elif (
+            next_vertex in visited_vertices and edge[::-1] not in visited_edges
+        ):
             # if arrived at a visited vertex,
             # for which the reverse edge was not used,
             # exit via the reverse edge
@@ -477,8 +480,9 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
             code.extend(virtual_edges_codes[edge])
         if edge[0] in A:
             code.append(STAR)
-            code.extend([item for articulation in A[edge[0]] for item in articulation])
-            # del A[edge[1]]
+            code.extend(
+                [item for articulation in A[edge[0]] for item in articulation]
+            )
 
     # account for the last vertex
     last_edge = tour[-1]
@@ -488,12 +492,9 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
 
     if last_edge[1] in A:
         code.append(STAR)
-        code.extend([item for articulation in A[last_edge[1]] for item in articulation])
-        # del A[last_edge[1]]
-
-    # if tour[-1][0] in A:
-    #     code.extend([item for articulation in A[tour[-1][0]] for item in articulation])
-    # del A[tour[-1][0]]
+        code.extend(
+            [item for articulation in A[last_edge[1]] for item in articulation]
+        )
 
     code.append(R_CLOSE)
     return code
@@ -519,7 +520,9 @@ def code_of_R_root_node(root, A, tree):
     )
 
     return min(
-        get_code_for_edge_R_node(edge, direction, skeleton, virtual_edges_codes, A)
+        get_code_for_edge_R_node(
+            edge, direction, skeleton, virtual_edges_codes, A
+        )
         for edge in skeleton.edge_iterator()
         for direction in ["left", "right"]
     )
@@ -546,7 +549,9 @@ def find_code_R_non_root(e_in, node, A, tree):
     )
 
     return min(
-        get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A)
+        get_code_for_edge_R_node(
+            e_in, direction, skeleton, virtual_edges_codes, A
+        )
         for direction in ["left", "right"]
     )
 
@@ -629,7 +634,7 @@ def find_biconnected_code(G, A):
     return min_code
 
 
-def find_planar_code(G):
+def find_planar_code_connected(G):
     """
     Computes the code of a planar graph.
 
@@ -658,7 +663,6 @@ def find_planar_code(G):
             C[leaf] = find_biconnected_code(G.subgraph(leaf[1]), A)
 
         # a leaf can only be adjacent to a cut node anyway
-        # articulation_points = set(itertools.chain([T[leaf] for leaf in leaves]))
         articulation_points = set()
         for leaf in leaves:
             for neigh in T[leaf]:
@@ -670,11 +674,15 @@ def find_planar_code(G):
                 biconnected_neighs.append(C[leaf])
 
             previous_code = (
-                A[articulation_point[1]][1:-1] if A[articulation_point[1]] else []
+                A[articulation_point[1]][1:-1]
+                if A[articulation_point[1]]
+                else []
             )
             A[articulation_point[1]] = [[A_OPEN]]
 
-            A[articulation_point[1]].extend(sorted(previous_code + biconnected_neighs))
+            A[articulation_point[1]].extend(
+                sorted(previous_code + biconnected_neighs)
+            )
 
             A[articulation_point[1]].append([A_CLOSE])
 
@@ -688,14 +696,39 @@ def find_planar_code(G):
     v = next(T.vertex_iterator())
 
     if v[0] == "C":  # articulation point
-        return [item for articulation in A[v[1]] for item in articulation]
+        return articulation_to_iterable(A[v[1]])
 
     # else the last node is a biconnected component
     return find_biconnected_code(G.subgraph(v[1]), A)
 
 
+def find_planar_code(G):
+    """
+    Computes the code of a planar graph.
+
+    See DOI:10.7155/jgaa.00094
+    Algorithm and Experiments in Testing Planar Graphs for Isomorphism, by Kuklu et al
+    """
+    graphs = list(G.connected_components_subgraphs())
+
+    subgraphs_codes = sorted(
+        [find_planar_code_connected(graph) for graph in graphs]
+    )
+
+    code = []
+
+    for subgraph_code in subgraphs_codes:
+        code.append(C_OPEN)
+        code.extend(subgraph_code)
+        code.append(C_CLOSE)
+
+    return code
+
+
 def code_to_string(code):
     special_chars_map = {
+        C_CLOSE: ")C",
+        C_OPEN: "(C",
         R_CLOSE: ")R",
         R_OPEN: "(R",
         S_CLOSE: ")S",
