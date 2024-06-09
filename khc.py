@@ -27,7 +27,7 @@ A_OPEN = SPECIAL_BASE + 1
 STAR = SPECIAL_BASE
 
 DIMS = 40
-SPECIAL_SYMBOLS = 14
+SPECIAL_SYMBOLS = 15
 
 
 @functools.total_ordering
@@ -38,7 +38,9 @@ class Atom:
         # this atom represents a special symbol
         if key >= SPECIAL_BASE:
             self.value = np.zeros(DIMS + SPECIAL_SYMBOLS)
-            self.value[DIMS + key - SPECIAL_BASE] = value if key == INTEGER else 1
+            self.value[DIMS + key - SPECIAL_BASE] = (
+                value if key == INTEGER else 1
+            )
         # this atom represents an integer meaningful to the code
         elif key < SPECIAL_BASE and value is None:
             self.value = np.zeros(DIMS + SPECIAL_SYMBOLS)
@@ -49,6 +51,7 @@ class Atom:
             self.value = np.concatenate(
                 [value, np.zeros(DIMS - len(value) + SPECIAL_SYMBOLS)]
             )
+            self.value[-1] = 1  # mark it as being a node
 
     def __eq__(self, other):
         return self.key == other.key
@@ -504,7 +507,9 @@ def weinberg(G, G_simple, start_edge, direction):
             # if arrived at a new vertex, exit via the first edge
             # from the embedding in the corresponding direction
             edge = get_next_edge(edge, direction)
-        elif next_vertex in visited_vertices and edge[::-1] not in visited_edges:
+        elif (
+            next_vertex in visited_vertices and edge[::-1] not in visited_edges
+        ):
             # if arrived at a visited vertex,
             # for which the reverse edge was not used,
             # exit via the reverse edge
@@ -543,7 +548,8 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
     for edge in tour:
         if edge[0] not in visited_nodes:
             visited_nodes[edge[0]] = len(visited_nodes) + 1
-        code.append(Atom(visited_nodes[edge[0]], get_vertex_feature(edge[0])))
+        code.append(Atom(visited_nodes[edge[0]]))
+        code.append(Atom(0, get_vertex_feature(edge[0])))
         if is_virtual(edge) and edge in virtual_edges_codes:
             code.extend(virtual_edges_codes[edge])
         if edge[0] in A:
@@ -554,7 +560,8 @@ def get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A):
     last_edge = tour[-1]
     if last_edge[1] not in visited_nodes:
         visited_nodes[last_edge[1]] = len(visited_nodes) + 1
-    code.append(Atom(visited_nodes[last_edge[1]], get_vertex_feature(last_edge[1])))
+    code.append(Atom(visited_nodes[last_edge[1]]))
+    code.append(Atom(0, get_vertex_feature(last_edge[1])))
 
     if last_edge[1] in A:
         code.append(Atom(STAR))
@@ -584,7 +591,9 @@ def code_of_R_root_node(root, A, tree):
     )
 
     return min(
-        get_code_for_edge_R_node(edge, direction, skeleton, virtual_edges_codes, A)
+        get_code_for_edge_R_node(
+            edge, direction, skeleton, virtual_edges_codes, A
+        )
         for edge in skeleton.edge_iterator()
         for direction in ["left", "right"]
     )
@@ -611,7 +620,9 @@ def find_code_R_non_root(e_in, node, A, tree):
     )
 
     return min(
-        get_code_for_edge_R_node(e_in, direction, skeleton, virtual_edges_codes, A)
+        get_code_for_edge_R_node(
+            e_in, direction, skeleton, virtual_edges_codes, A
+        )
         for direction in ["left", "right"]
     )
 
@@ -739,11 +750,15 @@ def find_planar_code_connected(G):
                 biconnected_neighs.append(C[leaf])
 
             previous_code = (
-                A[articulation_point[1]][1:-1] if A[articulation_point[1]] else []
+                A[articulation_point[1]][1:-1]
+                if A[articulation_point[1]]
+                else []
             )
             A[articulation_point[1]] = [[Atom(A_OPEN)]]
 
-            A[articulation_point[1]].extend(sorted(previous_code + biconnected_neighs))
+            A[articulation_point[1]].extend(
+                sorted(previous_code + biconnected_neighs)
+            )
 
             A[articulation_point[1]].append([Atom(A_CLOSE)])
 
@@ -772,7 +787,9 @@ def find_planar_code(G):
     """
     graphs = list(G.connected_components_subgraphs())
 
-    subgraphs_codes = sorted([find_planar_code_connected(graph) for graph in graphs])
+    subgraphs_codes = sorted(
+        [find_planar_code_connected(graph) for graph in graphs]
+    )
 
     code = []
 
@@ -873,10 +890,12 @@ print(f"Precision: {TP / (TP + FP)}")
 print(f"Recall: {TP / (TP + FN)}")
 
 codes_sorted = [codes[id] for id in sorted(codes.keys())]
-codes_sorted = [np.array([atom.value for atom in code]) for code in codes_sorted]
+codes_sorted = [
+    np.array([atom.value for atom in code]) for code in codes_sorted
+]
 
 
-with open("NCI109_codes_vertices_tour_order_connected_marks.pkl", "wb") as f:
+with open("NCI109_codes_thesis.pkl", "wb") as f:
     pickle.dump(codes_sorted, f)
 
 with open("NCI109_graph_labels.pkl", "wb") as f:
